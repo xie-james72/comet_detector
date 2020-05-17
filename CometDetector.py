@@ -10,8 +10,27 @@ from scipy import ndimage
 from scipy.optimize import least_squares
 
 
-# i'll likely need to create a class for the objects i detect to store their features
-# and also a class for each image sequence
+class sequence:
+    # this class defines a series of 4 images
+    def __init__(self, path, position):
+        # instatiate four image objects from the specified path and the position in the directory
+        print('initialized sequence')
+
+
+class image:
+    # this class defines an image object and associated functions to clean it and locate properties in an image
+    def __init__(self, filename):
+        # get timestamp from filename
+        print('initialized image')
+
+    # include the contrast stretch, remove timestamp, gaussian blur, clean_image, residuals, find_maxima, and
+    # removing the noise floor
+
+
+class object:
+    # this class defines an object identified in an image sequence
+    def __init__(self):
+        print('initialized object')
 
 
 def contrastStretch(img, maxscale=255.0):
@@ -62,6 +81,7 @@ def cleanImage(imgA, imgB, sigma=0.7):
     imgA = remove_timestamp(imgA)
     imgA = cv2.GaussianBlur(imgA, (3, 3), sigma)  # low pass filter
     imgB = cv2.GaussianBlur(imgB, (3, 3), sigma)  # low pass filter
+
     imgAB = cv2.subtract(imgA, imgB)  # high pass filter
     imgAB = contrastStretch(imgAB)  # min/max Contrast stretching; this might fuck with the histogram. Test it out.
     return imgAB
