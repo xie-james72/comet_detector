@@ -6,7 +6,12 @@ from os.path import isfile, join
 
 import cv2
 import numpy as np
+from scipy import ndimage
 from scipy.optimize import least_squares
+
+
+# i'll likely need to create a class for the objects i detect to store their features
+# and also a class for each image sequence
 
 
 def contrastStretch(img, maxscale=255.0):
@@ -16,12 +21,36 @@ def contrastStretch(img, maxscale=255.0):
     return img.astype(np.uint8)
 
 
+def remove_timestamp(img):
+    # removes the timestamp found in the lower left-hand corner of all LASCO C2 and C3 images by
+    # performing a connected component analysis on a ROI and removing the largest 16
+    # there are always 16 objects in the timestamp (4 year, 2 mo, 2 day, 2 hour, 2 min, 2 slashes, colon (2 dots))
+
+    # this fails if there is another large bright object in the ROI, though in the original paper those objects would
+    # also have been removed
+    ROI = img[490:511, 0:200]
+    ROI_clean = cv2.threshold(ROI, 128, 1, cv2.THRESH_BINARY)[1]
+    n, label = cv2.connectedComponents(ROI_clean)
+
+    if n >= 16:
+        objects = ndimage.find_objects(label)
+        sizes = ndimage.sum(ROI, labels=label, index=range(n + 1))
+        threshold = np.sort(sizes)[n - 16]
+        for i, size in enumerate(sizes):
+            if size >= threshold:
+                ROI[objects[i]] = 0
+    else:
+        print('there are fewer than 16 objects in the ROI')
+
+    img[490:511, 0:200] = ROI
+    return img
+
+
 def residuals(p, x, y):
     # returns the residuals of a histogram curve fit, given the parameters of the curve p, the domain x, and the
     # frequencies y
     a, b, c = p
     res = [f - (a * np.exp(b * i) - a * np.exp(c * i)) for i, f in zip(x, y)]
-    # print(sum(res))
     return res
 
 
@@ -29,8 +58,10 @@ def cleanImage(imgA, imgB, sigma=0.7):
     # Removing noise from images via bandpass filter and increasing contrast
     # the high-pass filter is performed by subtracting two images of similar timestamp to remove stationary objects
     # the low-pass filter is a gaussian blur to preserve faint and small objects which may be removed in a median filter
-    imgA = cv2.GaussianBlur(A, (3, 3), sigma)  # low pass filter
-    imgB = cv2.GaussianBlur(B, (3, 3), sigma)  # low pass filter
+
+    imgA = remove_timestamp(imgA)
+    imgA = cv2.GaussianBlur(imgA, (3, 3), sigma)  # low pass filter
+    imgB = cv2.GaussianBlur(imgB, (3, 3), sigma)  # low pass filter
     imgAB = cv2.subtract(imgA, imgB)  # high pass filter
     imgAB = contrastStretch(imgAB)  # min/max Contrast stretching; this might fuck with the histogram. Test it out.
     return imgAB
@@ -81,24 +112,17 @@ def remove_noise_floor(img, maxima, alpha=0.01):
     while hist_fit[k] <= noise_floor_freq:
         noise_floor = k
         k += 1
-        print(noise_floor)
+        # print(noise_floor)
 
     # The issue im encountering is that the image noise floor is 0
     # Maybe i'll try to reach out and ask about it....
-    # Its definitely performed after the cleaning
     # For any object in the image with maxima less than the noise floor, delete it
     # cleanimg = cv2.subtract(img, noise_floor)
     return noise_floor
 
 
-def remove_timestamp():
-    # removes the timestamp found in the lower left-hand corner of all LASCO C2 and C3 images
-    return
-
-
 # Clean or discard the image
 # Omit images with over a certain number of objects - this might be due to CMEs
-# Remove the timestamp - regional maxima with intensity 255. It has size greater than 20 pixels
 # Identify all candidate objects in an image
 # Items with super low variability are likely hot pixels.
 # Record positions
@@ -134,8 +158,8 @@ B = cv2.imread(mypath + filenames[1], cv2.IMREAD_GRAYSCALE)
 
 AB = cleanImage(A, B)
 ABmax = find_maxima(AB)
-
 remove_noise_floor(AB, ABmax)
+remove_timestamp(A)
 
 cv2.imshow('figure_2', AB)
 cv2.waitKey(0)
